@@ -34,6 +34,8 @@ INSERT INTO Authors (AuthorID, FirstName, LastName, BirthDate)
     (4, 'Ernest', 'Hemingway', '1899-07-21'),
     (5, 'Virginia', 'Woolf', '1882-01-25');
 
+
+
 -- View the Authors table
 SELECT * FROM Authors;
 
@@ -153,3 +155,80 @@ WHERE BookID = 1;
 
 --view the audit (Should have old price and new price)
 SELECT * FROM BookPriceAudit;
+
+-- PART 2
+-- Book reviews table creation
+CREATE TABLE BookReviews(
+    ReviewID INT PRIMARY KEY,
+    BookID INT, -- foreign key for books table
+    CustomerID NCHAR(5), -- foreign key for customers table
+    Rating INT, -- scale 1-5
+    ReviewText NVARCHAR(500),
+    ReviewDate DATE,
+    FOREIGN KEY (BookID) REFERENCES Books(BookID),
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID)
+);
+
+-- Create a view named vw_BookReviewStats
+CREATE VIEW vw_BookReviewStats AS
+SELECT 
+    b.Title AS BookTitle,
+    COUNT(r.ReviewID) AS TotalReviews,
+    AVG(CAST(r.Rating AS DECIMAL(3,2))) AS AverageRating,
+    MAX(r.ReviewDate) AS MostRecentReviewDate
+FROM Books b
+LEFT JOIN BookReviews r ON b.BookID = r.BookID
+GROUP BY b.BookID, b.Title;
+
+-- View the view (it will have null and 0 reviews since nothing was added yet.)
+SELECT * FROM vw_BookReviewStats
+
+-- Create a trigger 
+CREATE TRIGGER tr_ValidateReviewDate
+ON BookReviews
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    IF EXISTS (
+        SELECT 1 
+        FROM inserted 
+        WHERE ReviewDate > CAST(GETDATE() AS DATE)
+    )
+    BEGIN
+        RAISERROR('Review date cannot be in the future.', 16, 1)
+        ROLLBACK TRANSACTION
+        RETURN
+    END
+END;
+GO
+
+-- Insert 3 reviews for books in the database
+INSERT INTO BookReviews (ReviewID, BookID, CustomerID, Rating, ReviewText, ReviewDate)
+VALUES 
+    (1, 1, 'ALFKI', 5, 'A timeless classic!', '1/25/2017'),
+    
+    (2, 2, 'AROUT', 4, 'Disturbingly relevant even today.', '12/31/1999'),
+    
+    (3, 3, 'LILAS', 5, 'Magical from start to finish!', GETDATE());
+
+-- Add a review from the future to see if the error message will state it cant be from the future, works!
+-- (4, 2, 'ALFKI', 5, 'Hopeless and Depressing read, but very needed in todays day and age.', '1/14/2057');
+
+DELETE FROM BookReviews;
+
+-- Update the third review from 5 stars to 4
+UPDATE BookReviews
+SET Rating = 4
+WHERE ReviewID = 3;
+
+-- Create another review for Harry potter to check the average rating changes
+INSERT INTO BookReviews (ReviewID, BookID, CustomerID, Rating, ReviewText, ReviewDate)
+VALUES (4, 3, 'ALFKI', 5, 'I''ve read this book multiple times and it never gets old!', GETDATE());
+
+-- View the inserted reviews
+SELECT * FROM BookReviews;
+
+-- Check the book review stats view
+SELECT * FROM vw_BookReviewStats;
+-- Harry Potters average rating is now a 4.5
+
