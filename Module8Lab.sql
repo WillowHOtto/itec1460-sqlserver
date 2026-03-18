@@ -104,3 +104,109 @@ WHERE i.object_id = OBJECT_ID('Products')
 ORDER BY i.name;
 GO
 
+-- ===== PART 2 STEP 2: ADD INVENTORY USER =====
+
+--Create login for inventory manager
+CREATE LOGIN InventoryMgr  WITH PASSWORD = 'Inv_123!';
+GO
+-- Received an error for password being too short, make it longer. Original password is INV123!
+
+-- Create user inventory manager inside the PixelPizzaPalace database
+CREATE USER InventoryMgr FOR LOGIN InventoryMgr;
+GO
+
+-- Inventory manager can only select and update items in products table
+GRANT SELECT, UPDATE ON Products TO InventoryMgr;
+GO
+
+-- Check that permissions are correct
+SELECT 
+    dp.name            AS UserName,
+    o.name             AS TableName,
+    p.permission_name  AS Permission
+FROM sys.database_permissions p
+JOIN sys.database_principals dp 
+    ON p.grantee_principal_id = dp.principal_id
+JOIN sys.objects o 
+    ON p.major_id = o.object_id
+WHERE dp.name IN ('Cashier', 'Manager', 'InventoryMgr')
+ORDER BY UserName, TableName;
+GO
+
+-- ===== PART 2 STEP 3: TABLE SIZES =====
+USE PixelPizzaPalace;
+GO
+
+SELECT 
+    t.name              AS TableName,
+    p.rows              AS NumberOfRows,
+    SUM(a.total_pages) * 8 AS TotalSpaceKB
+FROM sys.tables t
+JOIN sys.indexes i 
+    ON t.object_id = i.object_id
+JOIN sys.partitions p 
+    ON i.object_id = p.object_id 
+    AND i.index_id = p.index_id
+JOIN sys.allocation_units a 
+    ON p.partition_id = a.container_id
+GROUP BY t.name, p.rows
+ORDER BY TotalSpaceKB DESC;
+GO
+
+-- ===== PART 2 STEP 4: BACKUP AND RESTORE =====
+
+-- Step 4a
+INSERT INTO Products (ProductName, Price, Stock)
+VALUES ('Ice Cream Sundae', 5.99, 60);
+GO
+
+-- Step 4b
+BACKUP DATABASE PixelPizzaPalace
+TO DISK = '/var/opt/mssql/data/PixelPizzaPalace_New.bak'
+WITH FORMAT;
+GO
+
+-- Step 4c
+DELETE FROM Products WHERE ProductName = 'Ice Cream Sundae';
+GO
+
+SELECT * FROM Products;
+GO
+
+--Step 4d
+USE master;
+GO
+
+-- Take the database offline so we can restore it
+ALTER DATABASE PixelPizzaPalace SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+GO
+
+RESTORE DATABASE PixelPizzaPalace
+FROM DISK = '/var/opt/mssql/data/PixelPizzaPalace_New.bak'
+WITH REPLACE;
+GO
+
+-- Bring the database back online for all users
+ALTER DATABASE PixelPizzaPalace SET MULTI_USER;
+GO
+
+USE PixelPizzaPalace;
+GO
+
+SELECT * FROM Products;
+GO
+
+-- ===== PART 2 STEP 5: REFLECTION =====
+
+-- Reflection
+-- Question 1: The three most important tasks were...
+    -- 1: Creating a backup of the database
+    --2: Giving correct permissions to users 
+    --3: Protecting user accounts with strong passwords (Not really shown in the lab but we talked about it)
+
+-- Question 2: Pixel Pizza Palace needs permission control because...
+    -- Without permission control users have the power to alter and delete anything in the database, which can lead to unwanted changes and issues.
+    -- With permissions controls we can make sure that only authorized users can do their specific tasks. 
+
+-- Question 3: Without regular backups...
+    -- there is no way to ensure data security and recovery. In cases of data loss, without a backup the data cannot be retrieved and it is lost for good. 
