@@ -5,7 +5,6 @@
 ** Last Modified 5/21/2024.
 */
 
-
 -- Create the new database if it does not exist already
 IF NOT EXISTS (
     SELECT name
